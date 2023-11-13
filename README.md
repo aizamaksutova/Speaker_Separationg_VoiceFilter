@@ -1,87 +1,70 @@
-# VoiceFilter
+# Speaker Separation
+Project on speaker separation within the project DL in Audio. This rep contains my implementation of VoiceFilter model and all the steps to reimplement the pipeline
+## Model choice
 
-## Note from Seung-won (2020.10.25)
+For my implementation of VoiceFilter I used the model architecture which was presented within the paper [VoiceFilter: Targeted Voice Separation by Speaker-Conditioned Spectrogram Masking](https://arxiv.org/abs/1810.04826).
 
-Hi everyone! It's Seung-won from MINDs Lab, Inc.
-It's been a long time since I've released this open-source,
-and I didn't expect this repository to grab such a great amount of attention for a long time.
-I would like to thank everyone for giving such attention, and also Mr. Quan Wang (the first author of the VoiceFilter paper) for referring this project in his paper.
-
-Actually, this project was done by me when it was only 3 months after I started studying deep learning & speech separation without a supervisor in the relevant field.
-Back then, I didn't know what is a power-law compression, and the correct way to validate/test the models.
-Now that I've spent more time on deep learning & speech since then (I also wrote a paper published at [Interspeech 2020](https://arxiv.org/abs/2005.03295) 😊),
-I can observe some obvious mistakes that I've made.
-Those issues were kindly raised by GitHub users; please refer to the
-[Issues](https://github.com/mindslab-ai/voicefilter/issues?q=is%3Aissue+) and [Pull Requests](https://github.com/mindslab-ai/voicefilter/pulls) for that.
-That being said, this repository can be quite unreliable,
-and I would like to remind everyone to use this code at their own risk (as specified in LICENSE).
-
-Unfortunately, I can't afford extra time on revising this project or reviewing the Issues / Pull Requests.
-Instead, I would like to offer some pointers to newer, more reliable resources:
-
-- [VoiceFilter-Lite](https://arxiv.org/abs/2009.04323):
-This is a newer version of VoiceFilter presented at Interspeech 2020, which is also written by Mr. Quan Wang (and his colleagues at Google).
-I highly recommend checking this paper, since it focused on a more realistic situation where VoiceFilter is needed.
-- [List of VoiceFilter implementation available on GitHub](https://paperswithcode.com/paper/voicefilter-targeted-voice-separation-by):
-In March 2019, this repository was the only available open-source implementation of VoiceFilter.
-However, much better implementations that deserve more attention became available across GitHub.
-Please check them, and choose the one that meets your demand.
-- [PyTorch Lightning](https://www.pytorchlightning.ai/):
-Back in 2019, I could not find a great deep-learning project template for myself,
-so I and my colleagues had used this project as a template for other new projects.
-For people who are searching for such project template, I would like to strongly recommend PyTorch Lightning.
-Even though I had done a lot of effort into developing my own template during 2019
-([VoiceFilter](https://github.com/mindslab-ai/voicefilter) -> [RandWireNN](https://github.com/seungwonpark/RandWireNN)
--> [MelNet](https://github.com/Deepest-Project/MelNet) -> [MelGAN](https://github.com/seungwonpark/melgan)),
-I found PyTorch Lightning much better than my own template.
-
-Thanks for reading, and I wish everyone good health during the global pandemic situation.
-
-Best regards, Seung-won Park
-
----
-
-Unofficial PyTorch implementation of Google AI's:
-[VoiceFilter: Targeted Voice Separation by Speaker-Conditioned Spectrogram Masking](https://arxiv.org/abs/1810.04826).
 
 ![](./assets/voicefilter.png)
 
+
 ## Result
 
-- Training took about 20 hours on AWS p3.2xlarge(NVIDIA V100).
+- Training took about 25 hours on one NVIDIA P100 GPU, yet could not reach the desired SI-SDR. Though the trend in metrics increase was very promising and the model definitely just needs more training time to hit good quality.
 
-### Audio Sample
+| Metrics             | Ours |
+| ---------------------- | ----- |
+| Median SI-SDR on LibriSpeech dev-clean     | 1.138 |
+| Median PESQ on LibriSpeech dev-clean     |  1.22 |
 
-- Listen to audio sample at webpage: http://swpark.me/voicefilter/
+### Dependencies
+
+```
+pip install -r requirements.txt
+```
+
+### Dataset Generation
+
+As there are not prepared datasets for this kind of task, I had to create the datasets on my own. This dataset solution includes WHAM noises too, which will afterwards be used to generate mixes of audio with two speakers and additional noise.
+
+Here is the pipeline how one could do it for future research.
+
+```
+conda install -c conda-forge sox
+git clone https://github.com/JorisCos/LibriMix
+cd LibriMix 
+./generate_librimix.sh storage_dir
+mv storage_dir ./your_main_repo
+```
+In generate_librimix.sh you should choose only 2 speakers for this exact task. 
+
+After generating the dataset place utils/normalize-resample.sh to the head directory with all of your data to convert from .flac to .wav
+
+Then run in the Speaker_Separationg_VoiceFilter repo the following code
+
+```
+python3 generator.py -c config/data_convertion.yaml -d storage_dir/LibriSpeech -o wav_data -p 40 -n wav_data
+```
+This will output triplets of target.wav, ref.wav and mixed.wav which you will use for training
 
 
-### Metric
-
-| Median SDR             | Paper | Ours |
-| ---------------------- | ----- | ---- |
-| before VoiceFilter     |  2.5  |  1.9 |
-| after VoiceFilter      | 12.6  | 10.2 |
-
-![](./assets/sdr-result.png)
-
-- SDR converged at 10, which is slightly lower than paper's.
+### Train VoiceFilter
 
 
-## Dependencies
+1. Get pretrained model for speaker recognition system
 
-1. Python and packages
+    VoiceFilter utilizes speaker recognition system ([d-vector embeddings](https://google.github.io/speaker-id/publications/GE2E/)).
 
-    This code was tested on Python 3.6 with PyTorch 1.0.1.
-    Other packages can be installed by:
+    This model was trained with [VoxCeleb2](http://www.robots.ox.ac.uk/~vgg/data/voxceleb/vox2.html) dataset,
+    where utterances are randomly fit to time length [70, 90] frames.
+    Tests are done with window 80 / hop 40 and have shown equal error rate about 1%.
+    Data used for test were selected from first 8 speakers of [VoxCeleb1](http://www.robots.ox.ac.uk/~vgg/data/voxceleb/vox1.html) test dataset, where 10 utterances per each speakers are randomly selected.
 
-    ```bash
-    pip install -r requirements.txt
-    ```
+    The model can be downloaded at [this GDrive link](https://drive.google.com/file/d/1YFmhmUok-W76JkrfA0fzQt3c-ZsfiwfL/view?usp=sharing).
+```
+mv ~/embedder.pt Speaker_Separationg_VoiceFilter/
+```
 
-1. Miscellaneous 
-
-    [ffmpeg-normalize](https://github.com/slhck/ffmpeg-normalize) is used for resampling and normalizing wav files.
-    See README.md of [ffmpeg-normalize](https://github.com/slhck/ffmpeg-normalize/blob/master/README.md) for installation.
 
 ## Prepare Dataset
 
