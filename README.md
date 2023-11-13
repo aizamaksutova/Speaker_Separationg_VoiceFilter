@@ -158,3 +158,6 @@ python3 inference.py -c config/test_noise.yaml -e embedder.pt --checkpoint_path 
 I searched up different encoders for reference audios which we could use instead of the one we used in this model. 
 I tried to implement a simple speaker embedder based on a ConvGRU model which is described in this [repo](https://github.com/RF5/simple-speaker-embedding), it didn't exactly work but you can see my implementation [here](https://github.com/aizamaksutova/Speaker_Separationg_VoiceFilter/blob/main/utils/train_new_emb.py)
 
+## Logs 
+To not make the readme to overflooded added all the logs to assests directory
+
