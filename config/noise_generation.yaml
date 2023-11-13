@@ -15,8 +15,8 @@ model:
   fc2_dim: 601 # num_freq
 ---
 data:
-  train_dir: 'noised_data/train'
-  test_dir: 'noised_data/train'
+  train_dir: 'wav_data/train'
+  test_dir: 'wav_data/test'
   audio_len: 3.0
 ---
 form:
