@@ -8,6 +8,7 @@ For my implementation of VoiceFilter I used the model architecture which was pre
 ![](./assets/voicefilter.png)
 
 
+
 ## Result
 
 - Training took about 25 hours on one NVIDIA P100 GPU, yet could not reach the desired SI-SDR. Though the trend in metrics increase was very promising and the model definitely just needs more training time to hit good quality.
@@ -21,6 +22,7 @@ For my implementation of VoiceFilter I used the model architecture which was pre
 
 ```
 pip install -r requirements.txt
+python3 load_model.py
 ```
 
 ### Dataset Generation
@@ -68,14 +70,6 @@ This will output triplets of target.wav, ref.wav and mixed.wav which you will us
 
     The model can be downloaded at [this GDrive link](https://drive.google.com/file/d/1YFmhmUok-W76JkrfA0fzQt3c-ZsfiwfL/view?usp=sharing).
 
-## Very important, please do
-
-```
-wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1YFmhmUok-W76JkrfA0fzQt3c-ZsfiwfL' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1YFmhmUok-W76JkrfA0fzQt3c-ZsfiwfL" -O embedder.pt && rm -rf /tmp/cookies.txt
-```
-```
-mv ~/embedder.pt Speaker_Separationg_VoiceFilter/
-```
 
 2. Training process
 
@@ -104,7 +98,7 @@ mv ~/embedder.pt Speaker_Separationg_VoiceFilter/
 
 4. Resuming from checkpoint
 
-    ```bash
+    ```
     python trainer.py -c [config yaml] --checkpoint_path [chkpt/name/chkpt_{step}.pt] -e [path of embedder pt file] -m name
     ```
 
