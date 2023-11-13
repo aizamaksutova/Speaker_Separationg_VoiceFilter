@@ -22,7 +22,7 @@ For my implementation of VoiceFilter I used the model architecture which was pre
 
 ```
 pip install -r requirements.txt
-python3 load_model.py
+python3 model_load.py
 ```
 
 ### Dataset Generation
