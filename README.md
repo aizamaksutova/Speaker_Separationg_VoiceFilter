@@ -40,6 +40,12 @@ In generate_librimix.sh you should choose only 2 speakers for this exact task.
 
 After generating the dataset place utils/normalize-resample.sh to the head directory with all of your data to convert from .flac to .wav
 
+```
+vim normalize-resample.sh # set "N" as your CPU core number.
+chmod a+x normalize-resample.sh
+./normalize-resample.sh # this may take long
+```
+
 Then run in the Speaker_Separationg_VoiceFilter repo the following code
 
 ```
@@ -61,93 +67,60 @@ This will output triplets of target.wav, ref.wav and mixed.wav which you will us
     Data used for test were selected from first 8 speakers of [VoxCeleb1](http://www.robots.ox.ac.uk/~vgg/data/voxceleb/vox1.html) test dataset, where 10 utterances per each speakers are randomly selected.
 
     The model can be downloaded at [this GDrive link](https://drive.google.com/file/d/1YFmhmUok-W76JkrfA0fzQt3c-ZsfiwfL/view?usp=sharing).
+
+## Very important, please do
+
+```
+wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1YFmhmUok-W76JkrfA0fzQt3c-ZsfiwfL' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1YFmhmUok-W76JkrfA0fzQt3c-ZsfiwfL" -O embedder.pt && rm -rf /tmp/cookies.txt
+```
 ```
 mv ~/embedder.pt Speaker_Separationg_VoiceFilter/
 ```
 
+2. Training process
 
-## Prepare Dataset
-
-1. Download LibriSpeech dataset
-
-    To replicate VoiceFilter paper, get LibriSpeech dataset at http://www.openslr.org/12/.
-    `train-clear-100.tar.gz`(6.3G) contains speech of 252 speakers, and `train-clear-360.tar.gz`(23G) contains 922 speakers.
-    You may use either, but the more speakers you have in dataset, the more better VoiceFilter will be.
-
-1. Resample & Normalize wav files
-
-    First, unzip `tar.gz` file to desired folder:
-    ```bash
-    tar -xvzf train-clear-360.tar.gz
+     Specify your `train_dir`, `test_dir` at `config.yaml` and then run
     ```
-
-    Next, copy `utils/normalize-resample.sh` to root directory of unzipped data folder. Then:
-    ```bash
-    vim normalize-resample.sh # set "N" as your CPU core number.
-    chmod a+x normalize-resample.sh
-    ./normalize-resample.sh # this may take long
-    ```
-
-1. Edit `config.yaml`
-
-    ```bash
-    cd config
-    cp default.yaml config.yaml
-    vim config.yaml
-    ```
-
-1. Preprocess wav files
-
-    In order to boost training speed, perform STFT for each files before training by:
-    ```bash
-    python generator.py -c [config yaml] -d [data directory] -o [output directory] -p [processes to run]
-    ```
-    This will create 100,000(train) + 1000(test) data. (About 160G)
-
-
-## Train VoiceFilter
-
-1. Get pretrained model for speaker recognition system
-
-    VoiceFilter utilizes speaker recognition system ([d-vector embeddings](https://google.github.io/speaker-id/publications/GE2E/)).
-    Here, we provide pretrained model for obtaining d-vector embeddings.
-
-    This model was trained with [VoxCeleb2](http://www.robots.ox.ac.uk/~vgg/data/voxceleb/vox2.html) dataset,
-    where utterances are randomly fit to time length [70, 90] frames.
-    Tests are done with window 80 / hop 40 and have shown equal error rate about 1%.
-    Data used for test were selected from first 8 speakers of [VoxCeleb1](http://www.robots.ox.ac.uk/~vgg/data/voxceleb/vox1.html) test dataset, where 10 utterances per each speakers are randomly selected.
-    
-    **Update**: Evaluation on VoxCeleb1 selected pair showed 7.4% EER.
-    
-    The model can be downloaded at [this GDrive link](https://drive.google.com/file/d/1YFmhmUok-W76JkrfA0fzQt3c-ZsfiwfL/view?usp=sharing).
-
-1. Run
-
-    After specifying `train_dir`, `test_dir` at `config.yaml`, run:
-    ```bash
     python trainer.py -c [config yaml] -e [path of embedder pt file] -m [name]
     ```
-    This will create `chkpt/name` and `logs/name` at base directory(`-b` option, `.` in default)
 
-1. View tensorboardX
+    In my case it was
+    ```
+    python3 trainer.py -c config/convert.yaml --checkpoint_path chkpt/vf_exp2/chkpt_1000.pt -e embedder.pt -m vf_exp3
+    ```
+    This will create `chkpt/name` and `logs/name` at base directory
 
-    ```bash
+3. View tensorboardX
+
+    ```
     tensorboard --logdir ./logs
     ```
     
-    ![](./assets/tensorboard.png)
+    My training loss for the final experiment:
 
-1. Resuming from checkpoint
+
+![](./assets/sisya-loss.png)
+
+
+4. Resuming from checkpoint
 
     ```bash
     python trainer.py -c [config yaml] --checkpoint_path [chkpt/name/chkpt_{step}.pt] -e [path of embedder pt file] -m name
     ```
 
-## Evaluate
 
-```bash
-python inference.py -c [config yaml] -e [path of embedder pt file] --checkpoint_path [path of chkpt pt file] -m [path of mixed wav file] -r [path of reference wav file] -o [output directory]
+
+## To evaluate my results first download checkpoint
+
+## Very important, please do
+
 ```
+wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1hBYrwcw96KIjjkBcH2GZawOWXAZ5lEXO' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1hBYrwcw96KIjjkBcH2GZawOWXAZ5lEXO" -O best_model.pt && rm -rf /tmp/cookies.txt
+
+python3 inference.py -c config/convert.yaml -e embedder.pt --checkpoint_path best_model.pt -o results
+```
+
+
 
 ## Possible improvments
 
