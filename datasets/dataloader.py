@@ -3,6 +3,7 @@ import glob
 import torch
 import librosa
 from torch.utils.data import Dataset, DataLoader
+import numpy as np
 
 from utils.audio import Audio
 
@@ -12,15 +13,24 @@ def create_dataloader(hp, args, train):
         dvec_list = list()
         target_mag_list = list()
         mixed_mag_list = list()
+        target_wav_list = list()
+        mixed_wav_list = list()
+        mixed_phase_list = list()
 
-        for dvec_mel, target_mag, mixed_mag in batch:
+        for dvec_mel, target_wav, mixed_wav, target_mag, mixed_mag, mixed_phase in batch:
             dvec_list.append(dvec_mel)
             target_mag_list.append(target_mag)
             mixed_mag_list.append(mixed_mag)
+            target_wav_list.append(torch.tensor(target_wav))
+            mixed_wav_list.append(torch.tensor(mixed_wav))
+            mixed_phase_list.append(mixed_phase)
+
         target_mag_list = torch.stack(target_mag_list, dim=0)
         mixed_mag_list = torch.stack(mixed_mag_list, dim=0)
+        target_wav_list = torch.stack(target_wav_list, dim=0)
+        mixed_wav_list = torch.stack(mixed_wav_list, dim=0)
 
-        return dvec_list, target_mag_list, mixed_mag_list
+        return dvec_list, target_wav_list, mixed_wav_list, target_mag_list, mixed_mag_list, mixed_phase_list
 
     def test_collate_fn(batch):
         return batch
@@ -49,45 +59,48 @@ class VFDataset(Dataset):
         self.train = train
         self.data_dir = hp.data.train_dir if train else hp.data.test_dir
 
-        self.dvec_list = find_all(hp.form.dvec)
+        self.dvec_wav_list = find_all(hp.form.reference.wav)
         self.target_wav_list = find_all(hp.form.target.wav)
         self.mixed_wav_list = find_all(hp.form.mixed.wav)
-        self.target_mag_list = find_all(hp.form.target.mag)
-        self.mixed_mag_list = find_all(hp.form.mixed.mag)
 
-        assert len(self.dvec_list) == len(self.target_wav_list) == len(self.mixed_wav_list) == \
-            len(self.target_mag_list) == len(self.mixed_mag_list), "number of training files must match"
-        assert len(self.dvec_list) != 0, \
+        assert len(self.dvec_wav_list) == len(self.target_wav_list) == len(self.mixed_wav_list), "number of training files must match"
+        assert len(self.dvec_wav_list) != 0, \
             "no training file found"
 
         self.audio = Audio(hp)
 
     def __len__(self):
-        return len(self.dvec_list)
+        return len(self.dvec_wav_list)
 
     def __getitem__(self, idx):
-        with open(self.dvec_list[idx], 'r') as f:
-            dvec_path = f.readline().strip()
 
-        dvec_wav, _ = librosa.load(dvec_path, sr=self.hp.audio.sample_rate)
+
+        dvec_wav, _ = librosa.load(self.dvec_wav_list[idx], sr=self.hp.audio.sample_rate)
+        if not isinstance(dvec_wav, np.ndarray):
+            raise ValueError("Audio data is not a numpy array")
+
         dvec_mel = self.audio.get_mel(dvec_wav)
         dvec_mel = torch.from_numpy(dvec_mel).float()
 
+
         if self.train: # need to be fast
-            target_mag = torch.load(self.target_mag_list[idx])
-            mixed_mag = torch.load(self.mixed_mag_list[idx])
-            return dvec_mel, target_mag, mixed_mag
+            target_wav, _ = librosa.load(self.target_wav_list[idx], sr=self.hp.audio.sample_rate)
+            mixed_wav, _ = librosa.load(self.mixed_wav_list[idx], sr=self.hp.audio.sample_rate)
+            target_mag, _ = self.wav2magphase(target_wav)
+            mixed_mag, mixed_phase = self.wav2magphase(mixed_wav)
+            target_mag = torch.from_numpy(target_mag)
+            mixed_mag = torch.from_numpy(mixed_mag)
+            return dvec_mel, target_wav, mixed_wav, target_mag, mixed_mag, mixed_phase
         else:
-            target_wav, _ = librosa.load(self.target_wav_list[idx], self.hp.audio.sample_rate)
-            mixed_wav, _ = librosa.load(self.mixed_wav_list[idx], self.hp.audio.sample_rate)
-            target_mag, _ = self.wav2magphase(self.target_wav_list[idx])
-            mixed_mag, mixed_phase = self.wav2magphase(self.mixed_wav_list[idx])
+            target_wav, _ = librosa.load(self.target_wav_list[idx], sr=self.hp.audio.sample_rate)
+            mixed_wav, _ = librosa.load(self.mixed_wav_list[idx], sr=self.hp.audio.sample_rate)
+            target_mag, _ = self.wav2magphase(target_wav)
+            mixed_mag, mixed_phase = self.wav2magphase(mixed_wav)
             target_mag = torch.from_numpy(target_mag)
             mixed_mag = torch.from_numpy(mixed_mag)
             # mixed_phase = torch.from_numpy(mixed_phase)
             return dvec_mel, target_wav, mixed_wav, target_mag, mixed_mag, mixed_phase
 
-    def wav2magphase(self, path):
-        wav, _ = librosa.load(path, self.hp.audio.sample_rate)
+    def wav2magphase(self, wav):
         mag, phase = self.audio.wav2spec(wav)
         return mag, phase

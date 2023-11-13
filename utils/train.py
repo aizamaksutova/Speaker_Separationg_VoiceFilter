@@ -2,6 +2,7 @@ import os
 import math
 import torch
 import torch.nn as nn
+import torch.optim.lr_scheduler as lr_scheduler
 import traceback
 
 from .adabound import AdaBound
@@ -9,6 +10,7 @@ from .audio import Audio
 from .evaluation import validate
 from model.model import VoiceFilter
 from model.embedder import SpeechEmbedder
+from utils.sisdr import si_sdr
 
 
 def train(args, pt_dir, chkpt_path, trainloader, testloader, writer, logger, hp, hp_str):
@@ -19,6 +21,7 @@ def train(args, pt_dir, chkpt_path, trainloader, testloader, writer, logger, hp,
     embedder.eval()
 
     audio = Audio(hp)
+    num_epochs = hp.train.num_epochs
     model = VoiceFilter(hp).cuda()
     if hp.train.optimizer == 'adabound':
         optimizer = AdaBound(model.parameters(),
@@ -29,6 +32,10 @@ def train(args, pt_dir, chkpt_path, trainloader, testloader, writer, logger, hp,
                                      lr=hp.train.adam)
     else:
         raise Exception("%s optimizer not supported" % hp.train.optimizer)
+
+    if hp.train.lr_scheduler == 'OneCycleLR':
+        scheduler = lr_scheduler.OneCycleLR(optimizer, max_lr=0.01, steps_per_epoch=hp.train.steps_per_epoch, epochs=100000)
+
 
     step = 0
 
@@ -47,9 +54,9 @@ def train(args, pt_dir, chkpt_path, trainloader, testloader, writer, logger, hp,
 
     try:
         criterion = nn.MSELoss()
-        while True:
+        for _ in range(num_epochs):
             model.train()
-            for dvec_mels, target_mag, mixed_mag in trainloader:
+            for dvec_mels, target_wav, mixed_wav, target_mag, mixed_mag, mixed_phase in trainloader:
                 target_mag = target_mag.cuda()
                 mixed_mag = mixed_mag.cuda()
 
@@ -64,23 +71,41 @@ def train(args, pt_dir, chkpt_path, trainloader, testloader, writer, logger, hp,
                 mask = model(mixed_mag, dvec)
                 output = mixed_mag * mask
 
-                # output = torch.pow(torch.clamp(output, min=0.0), hp.audio.power)
-                # target_mag = torch.pow(torch.clamp(target_mag, min=0.0), hp.audio.power)
                 loss = criterion(output, target_mag)
 
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
+                scheduler.step()
+
                 step += 1
 
                 loss = loss.item()
                 if loss > 1e8 or math.isnan(loss):
                     logger.error("Loss exploded to %.02f at step %d!" % (loss, step))
                     raise Exception("Loss exploded")
-
                 # write loss to tensorboard
                 if step % hp.train.summary_interval == 0:
-                    writer.log_training(loss, step)
+                    
+                    target_mag = target_mag[0].unsqueeze(0)
+                    mixed_mag = mixed_mag[0].unsqueeze(0)
+
+                    dvec = dvec[0].unsqueeze(0)
+                    est_mask = model(mixed_mag, dvec)
+                    est_mag = est_mask * mixed_mag
+
+                    mixed_mag = mixed_mag[0].cpu().detach().numpy()
+                    target_mag = target_mag[0].cpu().detach().numpy()
+                    est_mag = est_mag[0].cpu().detach().numpy()
+                    est_wav = audio.spec2wav(est_mag, mixed_phase[0])
+                    est_mask = est_mask[0].cpu().detach().numpy()
+
+                    si_sdr_score = si_sdr(est_wav, target_wav)
+                    writer.log_training(loss, si_sdr_score,
+                                mixed_wav[0], target_wav[0], est_wav,
+                                mixed_mag.T, target_mag.T, est_mag.T, est_mask.T,
+                                scheduler.get_last_lr()[0],
+                                step)
                     logger.info("Wrote summary at step %d" % step)
 
                 # 1. save checkpoint file to resume training

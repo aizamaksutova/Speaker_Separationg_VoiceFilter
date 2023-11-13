@@ -7,7 +7,7 @@ import librosa
 import argparse
 import numpy as np
 from multiprocessing import Pool, cpu_count
-
+import soundfile as sf
 from utils.audio import Audio
 from utils.hparams import HParam
 
@@ -62,21 +62,13 @@ def mix(hp, args, audio, num, s1_dvec, s1_target, s2, train):
     # save vad & normalized wav files
     target_wav_path = formatter(dir_, hp.form.target.wav, num)
     mixed_wav_path = formatter(dir_, hp.form.mixed.wav, num)
-    librosa.output.write_wav(target_wav_path, w1, srate)
-    librosa.output.write_wav(mixed_wav_path, mixed, srate)
+    ref_wav_path = formatter(dir_, hp.form.reference.wav, num)
 
-    # save magnitude spectrograms
-    target_mag, _ = audio.wav2spec(w1)
-    mixed_mag, _ = audio.wav2spec(mixed)
-    target_mag_path = formatter(dir_, hp.form.target.mag, num)
-    mixed_mag_path = formatter(dir_, hp.form.mixed.mag, num)
-    torch.save(torch.from_numpy(target_mag), target_mag_path)
-    torch.save(torch.from_numpy(mixed_mag), mixed_mag_path)
 
-    # save selected sample as text file. d-vec will be calculated soon
-    dvec_text_path = formatter(dir_, hp.form.dvec, num)
-    with open(dvec_text_path, 'w') as f:
-        f.write(s1_dvec)
+    sf.write(target_wav_path, w1, srate)
+    sf.write(mixed_wav_path, mixed, srate)
+    sf.write(ref_wav_path, d, srate)
+
 
 
 if __name__ == '__main__':
